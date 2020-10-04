@@ -211,10 +211,9 @@ plot(x_initial, finalresult)
 
 ## 7
 
-- The Newton-Raphson method doesn't converge if the initial value is far from the true value. 
-- Improved the NR method by halving the steps if the likelihood is not improved. This improved the NR method's performance.
+- The N-R method doesn't converge if the initial value is far from the true value. 
+- Improved the NR method by halving the steps if the likelihood is not improved. This did not improve the NR method's performance.
 - fixed-point method, the performance of this method doesn't depend on the initial value, but it depends on the choice of scaling parameter.
-
 - After choosing the initial value by the fisher scoring method, the Newton-Raphson converges to the true value very fast 
 
 
@@ -330,4 +329,37 @@ freq <- c(11,2,5,6,1,4,1,24,1,19,42,46,8,2,6,2,15,5)
 table1 <- rbind(roots,freq) 
 print(table1)
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
