@@ -53,360 +53,50 @@ The r code of EM algorithm to estimate the parameters of the finite mixture regr
 model are:
 
 ```{r code, results='hide'}
-# EM algorithm manually
-# Needed functions
-mysum <- function(x) {
- sum(x[is.finite(x)])
-}
-LogLike <- function(tau,pi.init,beta.init,sigma.init){
- compJhat <- array(NA,dim = c(n,length(pi.init)))
- for(j in 1:length(pi.init)){
-  compJhat[,j] <- tau[,j]*(log(pi.init[j])+log(dnorm(y-xmat%*%beta.init[,j], 0,
-sigma.init)))
- }
- LogLike <- mysum(rowSums(compJhat))
-}
-
-SumLike <- function(pi.init,beta.init,sigma.init){
- hat <- array(NA,dim = c(n,length(pi.init)))
- for(j in 1:length(pi.init)){
-  hat[,j] <- pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init)
- }
- SumLike <- rowSums(hat)
-}
-
-# Function of finite mixture regression
-regmix_em <- function(y,xmat,pi.init,beta.init,sigma.init,tol,maxit){
- tau <- array(NA,dim = c(n,length(pi.init)))
- loglik <- c()
- loglik[1] <- 0
- k <- 2
- iter <- 1
-
- # compute initial log-likelihood 1&2
- compJ <- array(NA,dim = c(n,length(pi.init)))
- for(j in 1:length(pi.init)){
-  compJ[,j] <- pi.init[j]*(log(pi.init[j])+log(dnorm(y-xmat%*%beta.init[,j],0,sigma.init)))
- }
-
- loglik[2] <- mysum(rowSums(compJ))
-
- # loop
- while(abs(loglik[k]-loglik[k-1]) >= tol && iter < maxit){
-  # E step
-  for(j in 1:length(pi.init)){
-    dem <- SumLike(pi.init,beta.init,sigma.init)
-    tau[,j] <- (pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init))/dem
+mymcmc <- function(niter, thetaInit, data, sigma2, tau2, nburn= 100) {
+  p <- length(thetaInit)
+  thetaCurrent <- thetaInit
+  ## define a function for full conditional sampling  
+  logFC <- function(th, idx) {
+    theta <- thetaCurrent
+    theta[idx] <- th
+    logpost(theta, data, sigma2, tau2)
   }
-
- # M step
- for(j in 1:length(pi.init)){
-  pi.init[j] <- mysum(tau[,j])/n
- }
-
- for(j in 1:length(pi.init)){
-  beta.init[,j] <- as.matrix(rowSums(t(xmat)%*%(tau[,j] %*% t(y)))) / mysum((xmat
-%*% t(xmat)) %*% tau[,j])
- }
-
- sigmaJ <- c()
- for(j in 1:length(pi.init)){
-  sigmaJ[j] <- mysum(tau[,j]*(y-xmat%*%beta.init[,j])^2)
- }
- sigma.init <- sqrt(mysum(sigmaJ)/n)
-
- loglik[k+1] <- LogLike(tau,pi.init,beta.init,sigma.init)
-
- iter <- iter+1
- k <- k+1
-}
-
-regmix_em <- list(k = k,
-          pi.hat = pi.init,
-          sigma.hat = sigma.init,
-          beta.hat = beta.init,
-          log.lik = loglik[k])
+  out <- matrix(thetaInit, niter, p, byrow = TRUE)
+  print(out)
+  ## Gibbs sampling
+  for (i in 2:niter) {
+    for (j in 1:p) {
+      ## general-purpose arms algorithm
+      out[i, j] <- thetaCurrent[j] <-
+          HI::arms(thetaCurrent[j], logFC,
+                   function(x, idx) ((x > -10) * (x < 10)), 
+                   1, idx = j)
+    }
+  }
+  out[-(1:nburn), ]
 }
 
 
+niter <- 600
+nburn <- 100
+n <- 100
+a <- 0.0; b <- 0.5
+x <- rnorm(n)
+y <- rpois(n, exp(a + b * x))
+mydata <- data.frame(y = y, x = x)
 
+thetaInit <- c(2, 2, 2, 2, 2)
+print(thetaInit)
+sigma2 <- tau2 <- 100
+sim <- mymcmc(niter, thetaInit, mydata, sigma2, tau2)
+#print(sim)
 
-#3 Generating data and estimating the parameters
-
-#function to generate data from mixture regression model
-regmix_sim <- function(n, pi, beta, sigma) {
-    K <- ncol(beta)
-    p <- NROW(beta)
-    xmat <- matrix(rnorm(n * p), n, p) # normal covaraites
-    error <- matrix(rnorm(n * K, sd = sigma), n, K)
-    ymat <- xmat %*% beta + error # n by K matrix
-    ind <- t(rmultinom(n, size = 1, prob = pi))
-    y <- rowSums(ymat * ind)
-    data.frame(y, xmat)
-}
-
-##Parameters
-n <- 400
-pi <- c(.3, .4, .3)
-bet <- matrix(c( 1,  1,  1, -1, -1, -1), 2, 3)
-sig <- 1
-set.seed(1205)
-
-
-#generating data
-dat <- regmix_sim(n, pi, bet, sig)
-dat <- as.matrix(dat)
-
-dat[1:10,] #print the generated data from row 1 to row 10
-
-
-#Estimating Parameters using EM algorthim
-y <- dat[,1]
-xmat <- dat[,-1]
-pi.init <- pi/pi/length(pi)
-sigma.init <- sig/sig
-beta.init <- matrix(rnorm(6), 2, 3)
-tol <- 1e-5
-maxit <- 500
-
-MLE_EM <-  regmix_em(y,xmat,pi.init,beta.init,sigma.init,tol,maxit)
-
-#Print Results
-MLE_EM$k #number of iterations
-MLE_EM$pi.hat 
-MLE_EM$beta.hat 
-MLE_EM$sigma.hat 
-MLE_EM$log.lik 
-
-
-
-
-
-# 4.8.2
-
-#1 Write a function regmix_em1step() to implement the one step EM iteration:
-
-
-regmix_em1step <- function(y,xmat,pi.init,beta.init,sigma.init){
- tau <- array(NA,dim = c(length(y),length(pi.init)))
- # E step
- for(j in 1:length(pi.init)){
-  dem <- SumLike(pi.init,beta.init,sigma.init)
-  tau[,j] <- (pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init))/dem
- }
-
- # M step
- for(j in 1:length(pi.init)){
-  pi.init[j] <- mysum(tau[,j])/length(y)
- }
-
- for(j in 1:length(pi.init)){
-  beta.init[,j] <- as.matrix(rowSums(t(xmat) %*% (tau[,j] %*% t(y)))) / mysum((xmat %*% t(xmat))%*%tau[,j])
- }
-
- sigmaJ <- c()
- for(j in 1:length(pi.init)){
-  sigmaJ[j] <- mysum(tau[,j]*(y-xmat%*%beta.init[,j])^2)
- }
- sigma.init <- sqrt(mysum(sigmaJ)/n)
-
- regmix_em1step <- list(pi.hat = pi.init,
-              sigma.hat = sigma.init,
-              beta.hat = beta.init)
-}
-
-
-
-#2 implementation of the EM algorithm
-
-MLE_EM1step <- regmix_em1step(y,xmat,pi.init,beta.init,sigma.init)
-
-#print results
-MLE_EM1step$pi.hat
-MLE_EM1step$beta.hat
-MLE_EM1step$beta.hat
-
-#3 Call SQUAREM package
-
-# Objective function
-# negative log-likelihood of finite mixture regression
-regmix_em.loglik <- function(pi.init,beta.init,sigma.init){
- compJ <- array(NA,dim = c(length(y),length(pi.init)))
- for(j in 1:3){
- compJ[,j] <- log(pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init))
- }
- loglik <- -mysum(rowSums(compJ))
- return(loglik)
-}
-## call SQUARM package
-library(SQUAREM)
-fit <- squarem(par=list(pi.init=MLE_EM$pi.hat,beta.init=MLE_EM$beta.hat,sigma.init=MLE_EM$sigma.hat), objects = regmix_em.loglik,fixptfn=regmix_em1step,pi.init=MLE_EM$pi.hat, beta.init=MLE_EM$beta.hat,sigma.init=MLE_EM$sigma.hat)
-
-
-remove(list=objects())
-options(warn = -1)
-
-# Generating data from finite mixture regression model
-regmix_sim <- function(n,pi,beta,sigma){
- k <- ncol(beta)
- p <- nrow(beta)
- #Normal covaraites
- xmat <- matrix(rnorm(n * p), n, p)
- #Error term
- error <- matrix(rnorm(n * k, sd = sigma), n, k)
- # n by k matrix
- ymat <- xmat %*% beta + error
- ind <- t(rmultinom(n, size = 1, prob = pi))
- y <- rowSums(ymat * ind)
- data.frame(y,xmat)
-}
-## Estimation function (MLE and EM algorthim)
-# EM algorithm manually
-# Needed functions
-mysum <- function(x) {
- sum(x[is.finite(x)])
-}
-LogLike <- function(tau,pi.init,beta.init,sigma.init){
- compJhat <- array(NA,dim = c(n,length(pi.init)))
- for(j in 1:length(pi.init)){
- compJhat[,j] <- tau[,j]*(log(pi.init[j])+log(dnorm(y-xmat %*% beta.init[,j], 0, sigma.init)))
- }
- LogLike <- mysum(rowSums(compJhat))
-}
-SumLike <- function(pi.init,beta.init,sigma.init){
- hat <- array(NA,dim = c(n,length(pi.init)))
- for(j in 1:length(pi.init)){
- hat[,j] <- pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init)
- }
- SumLike <- rowSums(hat)
-}
-## Function of finite mixture regression
-regmix_em <- function(y,xmat,pi.init,beta.init,sigma.init,tol,maxit){
- tau <- array(NA,dim = c(n,length(pi.init)))
- loglik <- c()
- loglik[1] <- 0
- k <- 2
- iter <- 1
-
- ## compute initial loglikelihood 1&2
- compJ <- array(NA,dim = c(n,length(pi.init)))
- for(j in 1:length(pi.init)){
- compJ[,j] <- pi.init[j]*(log(pi.init[j])+log(dnorm(y-xmat%*%beta.init[,j],0,sigma.init)))
- }
- loglik[2] <- mysum(rowSums(compJ))
-
- # loop
- while(abs(loglik[k]-loglik[k-1]) >= tol && iter < maxit){
- # E step
- for(j in 1:length(pi.init)){
- dem <- SumLike(pi.init,beta.init,sigma.init)
- tau[,j] <- (pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init))/dem
- }
-
- # M step
- for(j in 1:length(pi.init)){
- pi.init[j] <- mysum(tau[,j])/n
- }
-
- for(j in 1:length(pi.init)){
- beta.init[,j] <- as.matrix(rowSums(t(xmat) %*% (tau[,j] %*% t(y)))) / mysum((xmat %*% t(xmat)) %*% tau[,j])
- }
- sigmaJ <- c()
- for(j in 1:length(pi.init)){
- sigmaJ[j] <- mysum(tau[,j]*(y-xmat%*%beta.init[,j])^2)
- }
- sigma.init <- sqrt(mysum(sigmaJ)/n)
-
- loglik[k+1] <- LogLike(tau,pi.init,beta.init,sigma.init)
-
- iter <- iter+1
- k <- k+1
- }
- regmix_em <- list(k = k,
- pi.hat = pi.init,
- sigma.hat = sigma.init,
- beta.hat = beta.init,
- log.lik = loglik[k])
-}
-###############################################################
-##---------Parameters------------------------------------
-n <- 400
-pi <- c(0.3, 0.4, 0.3)
-bet <- matrix(c(1, 1, 1, -1, -1, -1), 2, 3)
-sig <- 1
-set.seed(1205)
-# Generating data
-dat <- regmix_sim(n, pi, bet, sig)
-dat <- as.matrix(dat)
-dat[1:10,] # print generated data row 1 to 10
-#ML estimates using EM algorithm
-y <- dat[,1]
-xmat <- dat[,-1]
-pi.init <- pi/pi/length(pi)
-sigma.init <- sig/sig
-beta.init <- matrix(rnorm(6), 2, 3)
-tol <- 1e-5
-maxit <- 500
-
-MLE_EM <- regmix_em(y,xmat,pi.init,beta.init,sigma.init,tol,maxit)
-#Print Results
-MLE_EM$k # number of iterations
-MLE_EM$pi.hat 
-MLE_EM$beta.hat 
-MLE_EM$sigma.hat
-MLE_EM$log.lik
-
-#one step EM iteration 
-regmix_em1step <- function(y,xmat,pi.init,beta.init,sigma.init){
- tau <- array(NA,dim = c(length(y),length(pi.init)))
- # E step
- for(j in 1:length(pi.init)){
- dem <- SumLike(pi.init,beta.init,sigma.init)
- tau[,j] <- (pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init))/dem
- }
-
- # M step
- for(j in 1:length(pi.init)){
- pi.init[j] <- mysum(tau[,j])/length(y)
- }
- 
- for(j in 1:length(pi.init)){
- beta.init[,j] <-
-as.matrix(rowSums(t(xmat)%*%(tau[,j]%*%t(y))))/mysum((xmat%*%t(xmat))%*%tau[,j])
-}
-
- sigmaJ <- c()
- for(j in 1:length(pi.init)){
- sigmaJ[j] <- mysum(tau[,j]*(y-xmat%*%beta.init[,j])^2)
- }
- sigma.init <- sqrt(mysum(sigmaJ)/n)
-
- regmix_em1step <- list(pi.hat = pi.init,
- sigma.hat = sigma.init,
- beta.hat = beta.init)
-}
-# Implementation
-MLE_EM1step <- regmix_em1step(y,xmat,pi.init,beta.init,sigma.init)
-# Print Results
-MLE_EM1step$pi.hat 
-MLE_EM1step$beta.hat
-MLE_EM1step$sigma.hat
-
-
-# Objective function
-# negative log-likelihood of finite mixture regression
-regmix_em.loglik <- function(pi.init,beta.init,sigma.init){
- compJ <- array(NA,dim = c(length(y),length(pi.init)))
- for(j in 1:3){
- compJ[,j] <- log(pi.init[j]*dnorm(y-xmat%*%beta.init[,j],0,sigma.init))
- }
- loglik <- -mysum(rowSums(compJ))
- return(loglik)
-}
-# call SQUARM package
-library(SQUAREM)
-fit <- squarem(par=list(pi.init=MLE_EM$pi.hat, beta.init=MLE_EM$beta.hat, sigma.init=MLE_EM$sigma.hat), objects=regmix_em.loglik, fixptfn=regmix_em1step, pi.init=MLE_EM$pi.hat, beta.init=MLE_EM$beta.hat, sigma.init=MLE_EM$sigma.hat)
-
+plot(ts(sim[,1]))
+plot(ts(sim[,2]))
+plot(ts(sim[,3]))
+plot(ts(sim[,4]))
+plot(ts(sim[,5]))
 ```
 
 

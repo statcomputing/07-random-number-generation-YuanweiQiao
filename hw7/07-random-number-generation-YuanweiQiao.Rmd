@@ -1,0 +1,150 @@
+---
+title: "07-random-number-generation-YuanweiQiao"
+author: "Yuanwei Qiao"
+date: "10/25/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#5.3.1
+```{r code, results='hide'，Warning=FALSE}
+sample_from_g <- function(n) {
+    ret <- double(n)
+    theta = 1.2
+    x = rnorm(n)
+    for (i in 1:n) {
+        ret[i] <- (2 * x[i]^(theta - 1) + x[i] ^(theta - 0.5)) * exp(-x[i])
+    }
+    ret
+}
+
+u <- sample_from_g(10000)
+hist(u)
+
+
+
+
+
+sample_from_g <- function(n) {
+    ret <- double(n)
+    theta = 1.2
+    x = rnorm(n)
+    for (i in 1:n) {
+        ret[i] <- (2 * x[i]^(theta - 1) + x[i] ^(theta - 0.5)) * exp(-x[i])
+    }
+    ret
+}
+
+sample_from_f <- function(n) {
+    ret <- double(n)
+    x <- rnorm(n)
+    theta <- 0.2
+    for (i in 1:n) {
+        ret[i] <- sqrt(4 + x[i]) * x[i] ^ (theta - 1) * exp(-x[i])
+    }
+    ret
+}
+
+
+sample_rejection <- function(n) {
+    x <- rep(NA, n)
+    m <- 2
+    for (i in 1:n) {
+        while (TRUE) {
+            g <- sample_from_g(10)[1]
+            u <- runif(1)[1]
+            f <- sample_from_f(10)[1]
+            ratio = f / (m * g)
+            if (is.na(ratio) || is.na(u)) {
+                next
+            }
+            else if (u <= ratio) {
+               break
+            } 
+        }
+        x[i] <- g
+    }
+    x
+}
+
+u <- sample_rejection(10000)
+hist(u)
+
+
+#6.3.1
+
+
+normal <- function(x) {
+    return (exp(-x^2/200) / (sqrt(2*pi) * 10) )
+}
+
+gamma <- function(x) {
+    return  (0.5 - 10) * log(x) - x
+}
+
+logpost <- function(theta, data, sigma2, tau2) {
+  a <- theta[1]; b <- theta[2]
+  x <- data$x; y <- data$y
+  return(a * sum(y) + b * sum(x * y) - exp(a) * sum(exp(b * x))
+         - a^2 / 2 / sigma2 - b^2 / 2 / tau2)
+}
+
+mymcmc <- function(niter, thetaInit, data, sigma2, tau2, nburn= 100) {
+  p <- length(thetaInit)
+  thetaCurrent <- thetaInit
+  ## define a function for full conditional sampling  
+  logFC <- function(th, idx) {
+    theta <- thetaCurrent
+    theta[idx] <- th
+    if (idx == 1) {
+        normal(theta[idx])
+    }else if (idx == 2) {
+        normal(theta[idx])
+    } else {
+        gamma(theta[idx])
+    }
+    #logpost(theta, data, sigma2, tau2)
+    #normal_mix()
+  }
+  out <- matrix(thetaInit, niter, p, byrow = TRUE)
+  #print(out)
+  ## Gibbs sampling
+  for (i in 2:niter) {
+    for (j in 1:p) {
+      ## general-purpose arms algorithm
+      out[i, j] <- thetaCurrent[j] <-
+          HI::arms(thetaCurrent[j], logFC,
+                   function(x, idx) ((x > -10) * (x < 10)), 
+                   1, idx = j)
+    }
+  }
+  out[-(1:nburn), ]
+}
+
+
+niter <- 600
+nburn <- 100
+n <- 100
+a <- 0.0; b <- 0.5
+x <- rnorm(n)
+y <- rpois(n, exp(a + b * x))
+mydata <- data.frame(y = y, x = x)
+
+thetaInit <- c(2, 2, 2, 2, 2)
+print(thetaInit)
+sigma2 <- tau2 <- 100
+sim <- mymcmc(niter, thetaInit, mydata, sigma2, tau2)
+
+
+plot(ts(sim[,1]))
+plot(ts(sim[,2]))
+plot(ts(sim[,3]))
+plot(ts(sim[,4]))
+plot(ts(sim[,5]))
+
+```
+
+
